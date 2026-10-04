@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Flappy Bird · by Rajdeep</title>
+<style>
+:root{--page:#e6f0f8;--ink:#17324d;--muted:#566f86;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--page:#0d1824;--ink:#e6f0fa;--muted:#8fa6bc}}
+:root[data-theme="dark"]{--page:#0d1824;--ink:#e6f0fa;--muted:#8fa6bc}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html,body{height:100%;margin:0}
+body{background:var(--page);color:var(--ink);font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif;display:flex;flex-direction:column;overscroll-behavior:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+#stage{flex:1;min-height:0;overflow:hidden;display:flex;align-items:center;justify-content:center;padding:10px}
+canvas{display:block;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.3);touch-action:none;outline:none;cursor:pointer}
+canvas:focus-visible{outline:3px solid #ffb703;outline-offset:3px}
+footer{text-align:center;font-size:13px;color:var(--muted);padding:2px 12px 10px}
+footer b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="c" tabindex="0" aria-label="Flappy Bird game. Press space or tap to flap."></canvas></div>
+<footer>Created by <b>Rajdeep</b> · Space or tap to flap · P pause · M mute</footer>
+<script>
+(()=>{
+const W=320,H=568,GROUND=84,BX=90,R=12,GAP=140,PW=58,SPACE=200,SPEED=125,G=1500,JUMP=-405,MAXV=640,TAU=6.2832;
+const FONT='"Trebuchet MS","Segoe UI",system-ui,sans-serif';
+const cv=document.getElementById('c'),ctx=cv.getContext('2d'),stage=document.getElementById('stage');
+const RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let scale=1,state='ready',paused=false,muted=false,best=0,score=0,t=0,off=0,groundX=0,shake=0,flash=0,deadAt=0,newBest=false,bird,pipes=[],parts=[],ac;
+const clouds=Array.from({length:5},(_,i)=>({x:i*80,y:50+Math.random()*190,s:.6+Math.random()*.7,v:6+Math.random()*10}));
+const medals=[[40,'#9fe8ff'],[30,'#ffd24a'],[20,'#c9d1d9'],[10,'#cd7f32']];
+try{best=+localStorage.getItem('fb_best')||0;muted=localStorage.getItem('fb_mute')==='1'}catch(e){}
+
+function fit(){const aw=stage.clientWidth-20,ah=stage.clientHeight-20,d=window.devicePixelRatio||1;
+ scale=Math.max(.3,Math.min(aw/W,ah/H));
+ cv.style.width=W*scale+'px';cv.style.height=H*scale+'px';cv.width=Math.round(W*scale*d);cv.height=Math.round(H*scale*d)}
+new ResizeObserver(fit).observe(stage);fit();
+
+function beep(k){if(muted)return;try{ac=ac||new(window.AudioContext||window.webkitAudioContext)();if(ac.state==='suspended')ac.resume();
+ const m={flap:[420,640,.09,'square',.04],score:[780,1170,.14,'sine',.12],hit:[220,50,.3,'sawtooth',.12]}[k],n=ac.currentTime,o=ac.createOscillator(),g=ac.createGain();
+ o.type=m[3];o.frequency.setValueAtTime(m[0],n);o.frequency.exponentialRampToValueAtTime(m[1],n+m[2]);
+ g.gain.setValueAtTime(m[4],n);g.gain.exponentialRampToValueAtTime(.001,n+m[2]);
+ o.connect(g).connect(ac.destination);o.start(n);o.stop(n+m[2]+.02)}catch(e){}}
+
+function reset(){bird={y:H/2-40,vy:0,rot:0};pipes=[];parts=[];score=0;newBest=false;state='ready'}
+function burst(n,cols,sp){for(let i=0;i<n;i++){const a=Math.random()*TAU,v=40+Math.random()*sp;
+ parts.push({x:BX,y:bird.y,vx:Math.cos(a)*v-30,vy:Math.sin(a)*v-40,l:.6+Math.random()*.4,c:cols[i%cols.length],r:2+Math.random()*2.5})}}
+function die(grounded){state=grounded?'over':'dead';deadAt=performance.now();shake=.25;flash=.35;beep('hit');
+ burst(16,['#ffe27a','#f5a623','#fff5d6'],150);
+ if(score>best){best=score;newBest=true;try{localStorage.setItem('fb_best',best)}catch(e){}}}
+function flap(){if(paused)return;
+ if(state==='ready')state='playing';
+ if(state==='playing'){bird.vy=JUMP;beep('flap');parts.push({x:BX-14,y:bird.y+6,vx:-50,vy:20,l:.35,c:'#fff',r:3})}
+ else if(state==='over'&&performance.now()-deadAt>450)reset()}
+function togglePause(){if(state==='playing'||paused)paused=!paused}
+function toggleMute(){muted=!muted;try{localStorage.setItem('fb_mute',muted?'1':'0')}catch(e){}}
+
+function update(dt){t+=dt;
+ for(const c of clouds){c.x-=c.v*dt;if(c.x<-70){c.x=W+20;c.y=50+Math.random()*190}}
+ if(state==='ready'||state==='playing'){off+=SPEED*dt;groundX=(groundX+SPEED*dt)%24}
+ if(state==='ready'){bird.y=H/2-40+Math.sin(t*5)*6}
+ else if(state!=='over'){bird.vy=Math.min(MAXV,bird.vy+G*dt);bird.y+=bird.vy*dt;bird.rot=Math.max(-.45,Math.min(1.3,bird.vy/520))}
+ if(state==='playing'){
+  for(const p of pipes){p.x-=SPEED*dt;if(!p.s&&p.x+PW<BX-R){p.s=1;score++;beep('score')}}
+  pipes=pipes.filter(p=>p.x>-PW-10);
+  if(!pipes.length||pipes[pipes.length-1].x<=W+10-SPACE)pipes.push({x:W+10,top:70+Math.random()*(H-GROUND-GAP-140)});
+  if(bird.y+R>=H-GROUND){bird.y=H-GROUND-R;die(true)}
+  else{if(bird.y-R<0){bird.y=R;bird.vy=0}
+   const r=R-2;for(const p of pipes)if(BX+r>p.x&&BX-r<p.x+PW&&(bird.y-r<p.top||bird.y+r>p.top+GAP)){die();break}}}
+ else if(state==='dead'&&bird.y+R>=H-GROUND){bird.y=H-GROUND-R;bird.vy=0;state='over'}
+ for(const q of parts){q.x+=q.vx*dt;q.y+=q.vy*dt;q.vy+=500*dt;q.l-=dt}
+ parts=parts.filter(q=>q.l>0);shake=Math.max(0,shake-dt);flash=Math.max(0,flash-dt)}
+
+const circ=(x,y,r)=>{ctx.moveTo(x+r,y);ctx.arc(x,y,r,0,TAU)};
+const rr=(x,y,w,h,r)=>{ctx.beginPath();ctx.roundRect?ctx.roundRect(x,y,w,h,r):ctx.rect(x,y,w,h)};
+function txt(s,x,y,size,fill,al,stroke){ctx.font='800 '+size+'px '+FONT;ctx.textAlign=al||'center';ctx.lineJoin='round';
+ if(stroke!==0){ctx.lineWidth=size/4;ctx.strokeStyle='#243b53';ctx.strokeText(s,x,y)}ctx.fillStyle=fill;ctx.fillText(s,x,y)}
+function hills(col,base,amp,f,sp,ph){ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(-20,H);
+ for(let x=-20;x<=W+20;x+=8)ctx.lineTo(x,base-amp*(Math.sin((x+off*sp)*f+ph)*.5+.5));ctx.lineTo(W+20,H);ctx.fill()}
+function pipe(p){const g=ctx.createLinearGradient(p.x,0,p.x+PW,0);g.addColorStop(0,'#5fb41f');g.addColorStop(.35,'#a4e854');g.addColorStop(1,'#3d8512');
+ ctx.fillStyle=g;ctx.strokeStyle='#27560b';ctx.lineWidth=2;const gy=H-GROUND,b=p.top+GAP;
+ ctx.fillRect(p.x+4,0,PW-8,p.top);ctx.strokeRect(p.x+4,-2,PW-8,p.top+2);
+ ctx.fillRect(p.x+4,b,PW-8,gy-b);ctx.strokeRect(p.x+4,b,PW-8,gy-b+2);
+ ctx.fillRect(p.x,p.top-24,PW,24);ctx.strokeRect(p.x,p.top-24,PW,24);
+ ctx.fillRect(p.x,b,PW,24);ctx.strokeRect(p.x,b,PW,24)}
+function ground(){const gy=H-GROUND;ctx.fillStyle='#e0d493';ctx.fillRect(-20,gy,W+40,GROUND);
+ ctx.fillStyle='#6fb82f';ctx.fillRect(-20,gy,W+40,16);ctx.fillStyle='#93d44c';
+ for(let x=-groundX-24;x<W+24;x+=24){ctx.beginPath();ctx.moveTo(x,gy);ctx.lineTo(x+12,gy);ctx.lineTo(x+4,gy+16);ctx.lineTo(x-8,gy+16);ctx.fill()}
+ ctx.fillStyle='#4f8f1f';ctx.fillRect(-20,gy+16,W+40,3);
+ txt('Created by Rajdeep',W/2,gy+54,15,'#7a6a2c',0,0)}
+function drawBird(){ctx.save();ctx.translate(BX,bird.y);ctx.rotate(bird.rot);
+ const fl=Math.sin(t*(state==='playing'?26:12))*.55,g=ctx.createRadialGradient(-4,-5,2,0,0,R+4);
+ g.addColorStop(0,'#ffe27a');g.addColorStop(1,'#f5a623');ctx.fillStyle=g;ctx.strokeStyle='#5a3410';ctx.lineWidth=2;
+ ctx.beginPath();ctx.ellipse(0,0,R+3,R,0,0,TAU);ctx.fill();ctx.stroke();
+ ctx.save();ctx.translate(-5,3);ctx.rotate(fl);ctx.fillStyle='#fff5d6';ctx.beginPath();ctx.ellipse(0,0,8,5,-.2,0,TAU);ctx.fill();ctx.stroke();ctx.restore();
+ ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(7,-4,5,0,TAU);ctx.fill();ctx.stroke();
+ ctx.fillStyle='#111';ctx.beginPath();ctx.arc(8.5,-4,2,0,TAU);ctx.fill();
+ ctx.fillStyle='#ff6b35';ctx.beginPath();ctx.moveTo(11,1);ctx.quadraticCurveTo(21,0,20,4);ctx.quadraticCurveTo(18,9,10,7);ctx.closePath();ctx.fill();ctx.stroke();
+ ctx.restore()}
+
+function draw(){ctx.setTransform(cv.width/W,0,0,cv.height/H,0,0);
+ if(shake>0&&!RM)ctx.translate((Math.random()-.5)*shake*28,(Math.random()-.5)*shake*28);
+ const sky=ctx.createLinearGradient(0,0,0,H-GROUND);sky.addColorStop(0,'#3ea6f2');sky.addColorStop(1,'#d4f1ff');
+ ctx.fillStyle=sky;ctx.fillRect(-20,-20,W+40,H+40);
+ ctx.fillStyle='rgba(255,255,255,.85)';ctx.beginPath();for(const c of clouds){circ(c.x,c.y,14*c.s);circ(c.x+16*c.s,c.y-6*c.s,18*c.s);circ(c.x+36*c.s,c.y,14*c.s)}ctx.fill();
+ hills('#a6dca0',H-GROUND-10,70,.012,.15,0);hills('#7cc67a',H-GROUND+4,46,.02,.3,2);
+ pipes.forEach(pipe);ground();
+ for(const q of parts){ctx.globalAlpha=Math.min(1,q.l*2.5);ctx.fillStyle=q.c;ctx.beginPath();circ(q.x,q.y,q.r);ctx.fill()}ctx.globalAlpha=1;
+ drawBird();
+ if(state==='ready'){txt('Flappy Bird',W/2,128,46,'#ffd24a');if(best)txt('Best '+best,W/2,168,18,'#fff');
+  txt('Tap, click or press Space',W/2,350,16,'#fff');txt('to start flying',W/2,372,16,'#fff')}
+ else if(state==='playing'||paused)txt(score,W/2,92,56,'#fff');
+ if(state==='over'){txt('Game over',W/2,140,38,'#ffd24a');
+  rr(40,170,240,180,14);ctx.fillStyle='#fbf3cf';ctx.fill();ctx.strokeStyle='#5a3410';ctx.lineWidth=3;ctx.stroke();
+  const m=medals.find(m=>score>=m[0]);ctx.beginPath();circ(88,262,30);ctx.fillStyle=m?m[1]:'#e6dfbb';ctx.fill();ctx.stroke();
+  if(m)txt('★',88,274,32,'#fff');
+  txt('Score',256,208,14,'#5a3410','right',0);txt(score,256,242,34,'#243b53','right',0);
+  txt('Best',256,282,14,'#5a3410','right',0);txt(best,256,316,34,'#243b53','right',0);
+  if(newBest)txt('New best!',88,318,15,'#d9480f','center',0);
+  if(performance.now()-deadAt>450)txt('Tap or press Space to retry',W/2,392,15,'#fff')}
+ txt(muted?'🔇':'🔊',W-24,36,20,'#fff',0,0);txt('⏸',W-62,36,20,'#fff',0,0);
+ if(paused){ctx.fillStyle='rgba(10,25,45,.55)';ctx.fillRect(-20,-20,W+40,H+40);txt('Paused',W/2,H/2-10,40,'#fff');txt('Tap or press P to resume',W/2,H/2+22,15,'#fff')}
+ if(flash>0&&!RM){ctx.fillStyle='rgba(255,255,255,'+flash*2+')';ctx.fillRect(-20,-20,W+40,H+40)}}
+
+cv.addEventListener('pointerdown',e=>{e.preventDefault();cv.focus();const r=cv.getBoundingClientRect(),x=(e.clientX-r.left)/scale,y=(e.clientY-r.top)/scale;
+ if(y<54&&x>W-86){x>W-44?toggleMute():togglePause();return}
+ paused?togglePause():flap()});
+addEventListener('keydown',e=>{const k=e.code;
+ if(k==='Space'||k==='ArrowUp'||k==='KeyW'){e.preventDefault();if(!e.repeat)paused?togglePause():flap()}
+ else if(k==='KeyP'||k==='Escape')togglePause();else if(k==='KeyM')toggleMute();
+ else if((k==='Enter'||k==='KeyR')&&state==='over')flap()});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&state==='playing')paused=true});
+
+reset();let last=performance.now();
+(function loop(n){const dt=Math.min(.033,(n-last)/1000);last=n;if(!paused)update(dt);draw();requestAnimationFrame(loop)})(last);
+})();
+</script>
+</body>
+</html>
